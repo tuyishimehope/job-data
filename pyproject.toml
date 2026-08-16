@@ -3,5 +3,8 @@ name = "jobdata"
 version = "0.1.0"
 description = "Job ingestion platform backend"
 requires-python = ">=3.13"
+entrypoint="app.main:app"
 
-dependencies = []
+dependencies = [
+    "fastapi[standard]"
+]
