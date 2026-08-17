@@ -6,5 +6,7 @@ requires-python = ">=3.13"
 entrypoint="app.main:app"
 
 dependencies = [
-    "fastapi[standard]"
+    "fastapi[standard]",
+    "pydantic-settings",
+    "requests"
 ]
