@@ -4,15 +4,11 @@ from app.service.job_board.schema import GreenhouseJob
 
 
 greenhouse_boards = [
-    "Anthropic",
-    # "Scopely",
+    # "Anthropic",
+    "Scopely",
     # "Cloudbeds",
     # "Ebury",
     # "Parloa",
-    # "DoiT",
-    # "HSO International",
-    # "Getnet Platforms",
-    # "Santander",
     # "Affirm",
     # "rtbhouse",
     # "n26",
@@ -20,7 +16,6 @@ greenhouse_boards = [
     # "ionos",
     # "hellofresh",
     # "coinbase",
-    # "planet",
     # "algolia",
     # "squarespace",
     # "prisma",
@@ -28,19 +23,51 @@ greenhouse_boards = [
     # "atolls",
     # "dremio",
     # "remote",
-    # "armis",
+    # "Canonical",
+    # "AlphaSights",
+    # "Tripadvisor",
+    # "Samsara",
+    # "Contentful",
+    # "Salsify",
+    # "Squarespace",
+    # "Rithum",
+    # "Monzo",
+    # "Optiver",
+    # "Vercel",
 ]
 
 KEYWORDS = {
     "software engineer",
-    "software developer",
     "backend engineer",
-    "backend developer",
     "frontend engineer",
-    "frontend developer",
     "full stack engineer",
-    "full-stack engineer",
+    "Software Engineer I",
+    "Associate Software Engineer",
+    "Graduate Software Engineer",
+    "New Grad Software Engineer",
+    "Python Engineer",
+    "Java Engineer",
+    "Early Career Software Engineer",
+    "Software Developer",
+    "Graduate Developer"
 }
+
+BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
+SUFFIX = "/jobs"
+
+
+def check_company_board(company: str):
+    try:
+        response = requests.get(f"{BASE_URL}/company/{SUFFIX}")
+        if response.status_code == 404:
+            print(f"{company}: board not found")
+            return False
+        
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException:
+        print("An error occured")
+        return False
 
 
 def is_relevant_job(job: GreenhouseJob) -> bool:
@@ -48,8 +75,10 @@ def is_relevant_job(job: GreenhouseJob) -> bool:
 
     return any(keyword in title for keyword in KEYWORDS)
 
+
 def get_list_company():
     return greenhouse_boards
+
 
 def get_all_jobs():
 
@@ -73,10 +102,6 @@ def get_all_jobs():
     return all_jobs
 
 
-BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
-SUFFIX = "/jobs"
-
-
 def get_jobs_by_company(company: str):
 
     url = f"{BASE_URL}/{company}{SUFFIX}"
@@ -87,33 +112,21 @@ def get_jobs_by_company(company: str):
         timeout=30,
     )
 
-    if http_response.status_code == 404:
-        print(f"{company}: board not found")
+    result = check_company_board(company)
+    if result is False:
         return None
-
-    http_response.raise_for_status()
 
     data = http_response.json()
 
-    print(f"{company}: {data['meta']['total']} jobs")
+    if 'meta' not in data:
+        return None
+    else:
+        print(f"{company}: {data['meta']['total']} jobs")
 
-    for job in data["jobs"][:5]:
-        print("=" * 80)
-        print("ID:", job["id"])
-        print("Company_name:", job["company_name"])
-        print("Title:", job["title"])
-        print("Location:", job["location"]["name"])
-        print("URL:", job["absolute_url"])
-        print("Language:", job["language"])
-        print("Content:", job["content"])
-        print("Updated_at:", job["updated_at"])
-        print("first_published:", job["first_published"])
-        print("application_deadline:", job["application_deadline"])
+        response = []
 
-    response = []
+        for job in data["jobs"]:
+            greenhouse_job = GreenhouseJob.model_validate(job)
+            response.append(greenhouse_job)
 
-    for job in data["jobs"]:
-        greenhouse_job = GreenhouseJob.model_validate(job)
-        response.append(greenhouse_job)
-
-    return response
+        return response
