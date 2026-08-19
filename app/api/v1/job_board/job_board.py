@@ -7,11 +7,20 @@ router = APIRouter(prefix="/api/v1/job-board", tags=["/job-board"])
 
 @router.get("/companies")
 def get_list_company_endpoint():
-    return get_list_company()
+    names = get_list_company()
+    return {"total": len(names), "names": names}
+
 
 @router.get("/companies/{company_name}")
 def get_jobs_company_name_endpoint(company_name: str):
-    return get_jobs_by_company(company=company_name)
+    jobs = get_jobs_by_company(company=company_name)
+    if jobs is None:
+        return None
+    return {
+        "total": len(jobs),
+        "jobs": jobs,
+    }
+
 
 @router.get("/")
 def get_jobs_endpoint():
@@ -21,3 +30,7 @@ def get_jobs_endpoint():
         "total": len(jobs),
         "jobs": jobs,
     }
+
+# GET /api/v1/job-board/jobs/{id}
+# GET /api/v1/job-board/jobs/search
+# GET /api/v1/job-board/jobs/matches
