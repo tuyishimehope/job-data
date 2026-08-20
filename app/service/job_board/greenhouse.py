@@ -1,3 +1,4 @@
+import re
 import requests
 
 from app.service.job_board.schema import GreenhouseJob
@@ -6,13 +7,13 @@ from app.service.job_board.schema import GreenhouseJob
 greenhouse_boards = [
     "Scopely",
     "Cloudbeds",
-    "Ebury",
-    "Parloa",
-    "Affirm",
-    "rtbhouse",
-    "n26",
-    "celonis",
-    "ionos",
+    # "Ebury",
+    # "Parloa",
+    # "Affirm",
+    # "rtbhouse",
+    # "n26",
+    # "celonis",
+    # "ionos",
     #
     # "hellofresh",
     # "coinbase",
@@ -35,6 +36,12 @@ greenhouse_boards = [
     # "Monzo",
     # "Optiver",
     # "Vercel",
+    "proton",
+    "yld",
+    "apaleo",
+    "isomorphiclabs",
+    "canonical",
+    "ninjatrader",
 ]
 
 ROLE_KEYWORDS = {
@@ -112,7 +119,27 @@ VISA_POSITIVE_PATTERNS = [
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
 SUFFIX = "/jobs"
 
-import re
+
+def ingest_all_companies():
+    for company in greenhouse_boards:
+        jobs = get_jobs_by_company(company)
+
+        # for job in jobs:
+        # save_job(job)
+        return None
+
+
+def search_job(visa_sponsorship: bool):
+    import json
+
+    with open("app/examples/greenhouse_jobs.json", "r", encoding="utf-8") as file:
+        data = json.load(file)
+
+    return [
+        s
+        for s in data["jobs"]
+        if s["visa_sponsorship"] == visa_sponsorship
+    ]
 
 
 def extract_experience_years(text: str) -> int | None:
@@ -130,6 +157,7 @@ def extract_experience_years(text: str) -> int | None:
             return int(match.group(1))
 
     return None
+
 
 def detect_visa_sponsorship(text: str) -> bool | None:
     text = text.lower()
@@ -164,6 +192,7 @@ def detect_visa_sponsorship(text: str) -> bool | None:
             return True
 
     return None
+
 
 def get_list_company():
     return greenhouse_boards
@@ -254,13 +283,14 @@ def get_jobs_by_company(company: str):
     if 'meta' not in data:
         return None
     else:
-        # print(f"{company}: {data['meta']['total']} jobs")
+        print(f"{company}: {data['meta']['total']} jobs")
         response = []
 
         for job in data["jobs"]:
             greenhouse_job = GreenhouseJob.model_validate(job)
             greenhouse_job.company_name = company
-            greenhouse_job.visa_sponsorship = detect_visa_sponsorship(job['content'])
+            greenhouse_job.visa_sponsorship = detect_visa_sponsorship(
+                job['content'])
             greenhouse_job.years = extract_experience_years(job['content'])
             response.append(greenhouse_job)
 
