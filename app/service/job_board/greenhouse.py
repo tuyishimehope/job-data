@@ -1,8 +1,8 @@
-import re
 import requests
 
 from app.service.job_board.schema import GreenhouseJob
-
+from app.core.settings import settings
+from app.utils.job_fields import extract_experience_years, detect_visa_sponsorship, is_software_role
 
 greenhouse_boards = [
     "Scopely",
@@ -59,6 +59,7 @@ ROLE_KEYWORDS = {
     "Software Developer",
     "Graduate Developer"
 }
+
 SENIORITY_EXCLUSIONS = {
     "senior",
     "staff",
@@ -69,6 +70,7 @@ SENIORITY_EXCLUSIONS = {
     "head",
     "vp"
 }
+
 skills = ["Python",
           "Java",
           "FastAPI",
@@ -116,86 +118,8 @@ VISA_POSITIVE_PATTERNS = [
     "visa support",
 ]
 
-BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
+BASE_URL = settings.greenhouse_url
 SUFFIX = "/jobs"
-
-
-def ingest_all_companies():
-    for company in greenhouse_boards:
-        jobs = get_jobs_by_company(company)
-
-        # for job in jobs:
-        # save_job(job)
-        return None
-
-
-def search_job(visa_sponsorship: bool):
-    import json
-
-    with open("app/examples/greenhouse_jobs.json", "r", encoding="utf-8") as file:
-        data = json.load(file)
-
-    return [
-        s
-        for s in data["jobs"]
-        if s["visa_sponsorship"] == visa_sponsorship
-    ]
-
-
-def extract_experience_years(text: str) -> int | None:
-    text = text.lower()
-
-    patterns = [
-        r"(\d+)\+?\s*(?:years|yrs)\s+of\s+experience",
-        r"(\d+)\+?\s*(?:years|yrs)\s+experience",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text)
-
-        if match:
-            return int(match.group(1))
-
-    return None
-
-
-def detect_visa_sponsorship(text: str) -> bool | None:
-    text = text.lower()
-
-    negative_patterns = [
-        "no visa sponsorship",
-        "without visa sponsorship",
-        "unable to sponsor",
-        "cannot sponsor",
-        "do not sponsor",
-        "does not sponsor",
-        "not eligible for sponsorship",
-        "will not sponsor",
-    ]
-
-    for pattern in negative_patterns:
-        if pattern in text:
-            return False
-
-    positive_patterns = [
-        "visa sponsorship available",
-        "visa sponsorship is available",
-        "we offer visa sponsorship",
-        "we provide visa sponsorship",
-        "visa sponsorship provided",
-        "we are able to offer visa sponsorship",
-        "sponsor your visa",
-    ]
-
-    for pattern in positive_patterns:
-        if pattern in text:
-            return True
-
-    return None
-
-
-def get_list_company():
-    return greenhouse_boards
 
 
 def classify_seniority(title: str) -> str:
@@ -222,15 +146,6 @@ def classify_seniority(title: str) -> str:
     return "unknown"
 
 
-def is_software_role(title: str) -> bool:
-    title = title.lower()
-
-    return any(
-        keyword in title
-        for keyword in ROLE_KEYWORDS
-    )
-
-
 def classify_job(job: GreenhouseJob) -> str:
 
     if not is_software_role(job.title):
@@ -242,6 +157,32 @@ def classify_job(job: GreenhouseJob) -> str:
         return "irrelevant"
 
     return "candidate"
+
+
+def ingest_all_companies():
+    for company in greenhouse_boards:
+        jobs = get_jobs_by_company(company)
+
+        # for job in jobs:
+        # save_job(job)
+        return None
+
+
+def search_job(visa_sponsorship: bool):
+    import json
+
+    with open("app/examples/greenhouse_jobs.json", "r", encoding="utf-8") as file:
+        data = json.load(file)
+
+    return [
+        s
+        for s in data["jobs"]
+        if s["visa_sponsorship"] == visa_sponsorship
+    ]
+
+
+def get_list_company():
+    return greenhouse_boards
 
 
 def get_all_jobs():
