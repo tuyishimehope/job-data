@@ -5,7 +5,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
     
     app_name: str = "Job Data Ingestion Platform Backend"
-    greenhouse_url: str | None = None
+    greenhouse_url: str = ""
+    llm_api_url : str = ""
+    nvidia_api_key : str = ""
     
 
 settings = Settings()

@@ -1,12 +1,15 @@
+import json
+
 import requests
 
 from app.service.job_board.schema import GreenhouseJob
 from app.core.settings import settings
 from app.utils.job_fields import extract_experience_years, detect_visa_sponsorship, is_software_role
+from app.service.llm_integration.llm_service import llm_service
 
 greenhouse_boards = [
     "Scopely",
-    "Cloudbeds",
+    # "Cloudbeds",
     # "Ebury",
     # "Parloa",
     # "Affirm",
@@ -36,12 +39,12 @@ greenhouse_boards = [
     # "Monzo",
     # "Optiver",
     # "Vercel",
-    "proton",
-    "yld",
-    "apaleo",
-    "isomorphiclabs",
-    "canonical",
-    "ninjatrader",
+    # "proton",
+    # "yld",
+    # "apaleo",
+    # "isomorphiclabs",
+    # "canonical",
+    # "ninjatrader",
 ]
 
 ROLE_KEYWORDS = {
@@ -202,6 +205,7 @@ def get_all_jobs():
             if classification == "candidate":
                 all_jobs.append(job)
 
+    cleaned_job = extract_job_fields(job)
     return all_jobs
 
 
@@ -236,3 +240,15 @@ def get_jobs_by_company(company: str):
             response.append(greenhouse_job)
 
         return response
+
+
+def extract_job_fields(job: GreenhouseJob):
+    print("Starting extracting fields....")
+    result = llm_service.extract_fields(job)
+
+    # parsed_result = json.loads(result)
+
+    # greenhouse_job = GreenhouseJob.model_validate(result)
+    print(result)
+
+    return 
