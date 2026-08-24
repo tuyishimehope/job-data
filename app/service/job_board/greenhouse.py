@@ -2,15 +2,14 @@ import json
 
 import requests
 
-from app.service.job_board.schema import GreenhouseJob
+from app.service.job_board.schema import NormalizedJob, JobSource
 from app.core.settings import settings
 from app.utils.job_fields import extract_experience_years, detect_visa_sponsorship, is_software_role
 from app.service.llm_integration.llm_service import llm_service
 
 greenhouse_boards = [
-    "Scopely",
+    "Ebury",
     # "Cloudbeds",
-    # "Ebury",
     # "Parloa",
     # "Affirm",
     # "rtbhouse",
@@ -149,7 +148,7 @@ def classify_seniority(title: str) -> str:
     return "unknown"
 
 
-def classify_job(job: GreenhouseJob) -> str:
+def classify_job(job: NormalizedJob) -> str:
 
     if not is_software_role(job.title):
         return "irrelevant"
@@ -205,8 +204,13 @@ def get_all_jobs():
             if classification == "candidate":
                 all_jobs.append(job)
 
-    cleaned_job = extract_job_fields(job)
-    return all_jobs
+    result = []
+    for job in all_jobs:
+        job = soft_filter(job)
+        if job is None:
+            continue
+        result.append(job)
+    return result
 
 
 def get_jobs_by_company(company: str):
@@ -232,23 +236,54 @@ def get_jobs_by_company(company: str):
         response = []
 
         for job in data["jobs"]:
-            greenhouse_job = GreenhouseJob.model_validate(job)
+            greenhouse_job = NormalizedJob.model_validate(job)
+            greenhouse_job.source = JobSource.GREENHOUSE
             greenhouse_job.company_name = company
             greenhouse_job.visa_sponsorship = detect_visa_sponsorship(
                 job['content'])
-            greenhouse_job.years = extract_experience_years(job['content'])
-            response.append(greenhouse_job)
+            greenhouse_job.min_years_experience = extract_experience_years(
+                job['content'])
 
-        return response
+            classification = classify_job(greenhouse_job)
+
+            if classification == "candidate":
+                response.append(greenhouse_job)
+
+        result = []
+
+        for job in response:
+            data = soft_filter(job=job)
+            if data is None:
+                continue
+            result.append(data)
+
+        return result
 
 
-def extract_job_fields(job: GreenhouseJob):
-    print("Starting extracting fields....")
-    result = llm_service.extract_fields(job)
+def enrich_job(job: NormalizedJob) -> NormalizedJob:
+    extraction = llm_service.extract_fields(job)
 
-    # parsed_result = json.loads(result)
+    if extraction is None:
+        return job
 
-    # greenhouse_job = GreenhouseJob.model_validate(result)
-    print(result)
+    extracted = extraction.model_dump(exclude_none=True)
 
-    return 
+    for field, value in extracted.items():
+        setattr(job, field, value)
+
+    return job
+
+
+def soft_filter(job: NormalizedJob) -> NormalizedJob | None:
+    data = enrich_job(job)
+    if data.min_years_experience is not None:
+        if data.min_years_experience >= 6:
+            return None
+
+    if data.experience_level:
+        level = data.experience_level.lower()
+
+        if level in {"staff", "principal", "director"}:
+            return None
+
+    return data

@@ -1,0 +1,9 @@
+Analyze the following jobs data and extract/complete 
+the required fields, focus on deadline, visa, relocation, years, skills because they are hard to extract other fields come from api.
+Return ONLY valid JSON.
+Do not include markdown or explanations.
+
+Required fields:
+id, internal_job_id, company_name, title, updated_at, 
+requisition_id, location, absolute_url, language, content, 
+application_deadline, visa_sponsorship, years, skills(a list of string)

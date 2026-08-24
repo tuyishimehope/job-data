@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     greenhouse_url: str = ""
     llm_api_url : str = ""
     nvidia_api_key : str = ""
+    hf_token: str = ""
+    hf_url: str = ""
+    OPENAI_API_KEY: str = ""
     
 
 settings = Settings()

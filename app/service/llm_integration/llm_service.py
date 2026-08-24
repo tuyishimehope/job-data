@@ -1,77 +1,116 @@
-import requests
 import json
+from openai import OpenAI
+import requests
 from app.core.settings import settings
-from app.service.job_board.schema import GreenhouseJob
+from app.service.job_board.schema import JobAIExtraction, NormalizedJob
 
 invoke_url = settings.llm_api_url
 stream = True
 NVIDIA_API_KEY = settings.nvidia_api_key
 
 
-class LLMService():
+class LLMService:
+
     def __init__(self):
+        self.API_URL = settings.hf_url
         self.headers = {
-            "Authorization": f"Bearer {NVIDIA_API_KEY}",
-            "Accept": "text/event-stream" if stream else "application/json",
+            "Authorization": f"Bearer {settings.hf_token}",
+        }
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    def extract_fields(
+        self,
+        job: NormalizedJob,
+    ) -> JobAIExtraction | None:
+
+        job_context = {
+            "title": job.title,
+            "company_name": job.company_name,
+            "location": (
+                job.location.model_dump()
+                if job.location
+                else None
+            ),
+            "content": job.content,
         }
 
-    def extract_fields(self, job: GreenhouseJob):
-        payload = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "content": (
-                                "Analyze the following job data and extract/complete "
-                                "the required fields, focus on deadline, visa, relocation, years, skills because they are hard to extract other fields come from api.\n\n"
-                                "Return ONLY valid JSON.\n"
-                                "Do not include markdown or explanations.\n\n"
-                                "Required fields:\n"
-                                "id, internal_job_id, company_name, title, updated_at, "
-                                "requisition_id, location, absolute_url, language, content, "
-                                "application_deadline, visa_sponsorship, years, skills(a list of string).\n\n"
-                                f"Job:\n{job.model_dump_json()}"
-                            ), }
-                    ]
-                }
-            ],
-            "model": "moonshotai/kimi-k3",
-            "max_tokens": 16384,
-            "seed": 0,
-            "stream": stream,
-            "temperature": 1,
-            "reasoning_effort": "max"
-        }
+        # payload = {
+        #     "messages": [
+        #         {
+        #             "role": "user",
+        #             "content": (
+        #                 "Extract structured information from this job posting.\n\n"
+        #                 "Return ONLY valid JSON.\n"
+        #                 "Do not include markdown or explanations.\n\n"
+        #                 "Fields:\n"
+        #                 "- application_deadline\n"
+        #                 "- visa_sponsorship\n"
+        #                 "- visa_sponsorship_details\n"
+        #                 "- relocation_support\n"
+        #                 "- min_years_experience\n"
+        #                 "- max_years_experience\n"
+        #                 "- experience_level\n"
+        #                 "- skills\n"
+        #                 "- technologies\n"
+        #                 "- required_languages\n\n"
+        #                 f"Job:\n{json.dumps(job_context)}"
+        #             ),
+        #         }
+        #     ],
+        #     "model": "zai-org/GLM-5.3:novita",
+        # }
+        
+        content = (
+            "Extract structured information from this job posting.\n\n"
+            "Return ONLY valid JSON.\n"
+            "Do not include markdown or explanations.\n\n"
+            "Fields:\n"
+            "- application_deadline\n"
+            "- visa_sponsorship\n"
+            "- visa_sponsorship_details\n"
+            "- relocation_support\n"
+            "- min_years_experience\n"
+            "- max_years_experience\n"
+            "- experience_level\n"
+            "- skills\n"
+            "- technologies\n"
+            "- required_languages\n\n"
+            f"Job:\n{json.dumps(job_context)}"
+        )
+        try:
+            # response = requests.post(
+            #     self.API_URL,
+            #     headers=self.headers,
+            #     json=payload,
+            #     timeout=(10, 120),
+            # )
 
-        response = requests.post(
-            invoke_url, headers=self.headers, json=payload, stream=stream)
-        print("Status", response.status_code)
-        result = ""
+            # response.raise_for_status()
 
-        for line in response.iter_lines():
-            if not line:
-                continue
+            # content = response.json()["choices"][0]["message"]["content"]
 
-            decoded_line = line.decode("utf-8")
+            response = self.client.responses.create(
+                model="gpt-5.5",
+                # instructions=instructions,
+                input=content
+            )
+            content = response.output_text
 
-            if not decoded_line.startswith("data: "):
-                continue
+            parsed = json.loads(content)
 
-            data = decoded_line.removeprefix("data: ")
+            return JobAIExtraction.model_validate(parsed)
 
-            if data == "[DONE]":
-                break
+        except requests.exceptions.ReadTimeout:
+            print(f"LLM timeout: {job.title}")
+            return None
 
-            chunk = json.loads(data)
+        except requests.exceptions.RequestException as exc:
+            print(f"LLM request failed: {exc}")
+            return None
 
-            content = chunk["choices"][0]["delta"].get("content")
-
-            if content:
-                result += content
-                print(f"content: {content}")
-
-        return result
+        except (json.JSONDecodeError, ValueError, KeyError) as exc:
+            print(f"Invalid LLM response: {exc}")
+            return None
 
 
 llm_service = LLMService()
