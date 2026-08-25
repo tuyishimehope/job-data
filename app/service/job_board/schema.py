@@ -172,4 +172,4 @@ class JobAIExtraction(BaseModel):
     skills: list[str] = Field(default_factory=list)
     technologies: list[str] = Field(default_factory=list)
 
-    required_languages: list[str] = Field(default_factory=list)
+    required_languages: list[str] | None = Field(default_factory=list)

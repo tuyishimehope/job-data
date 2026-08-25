@@ -1,5 +1,3 @@
-import json
-
 import requests
 
 from app.service.job_board.schema import NormalizedJob, JobSource
@@ -8,8 +6,8 @@ from app.utils.job_fields import extract_experience_years, detect_visa_sponsorsh
 from app.service.llm_integration.llm_service import llm_service
 
 greenhouse_boards = [
-    "Ebury",
-    # "Cloudbeds",
+    "Cloudbeds",
+    # "Ebury",
     # "Parloa",
     # "Affirm",
     # "rtbhouse",

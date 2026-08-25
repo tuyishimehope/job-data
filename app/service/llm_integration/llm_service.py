@@ -4,19 +4,13 @@ import requests
 from app.core.settings import settings
 from app.service.job_board.schema import JobAIExtraction, NormalizedJob
 
-invoke_url = settings.llm_api_url
-stream = True
-NVIDIA_API_KEY = settings.nvidia_api_key
-
-
 class LLMService:
 
     def __init__(self):
-        self.API_URL = settings.hf_url
         self.headers = {
-            "Authorization": f"Bearer {settings.hf_token}",
+            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+            "Content-type": "application/json"
         }
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
     def extract_fields(
         self,
@@ -34,32 +28,6 @@ class LLMService:
             "content": job.content,
         }
 
-        # payload = {
-        #     "messages": [
-        #         {
-        #             "role": "user",
-        #             "content": (
-        #                 "Extract structured information from this job posting.\n\n"
-        #                 "Return ONLY valid JSON.\n"
-        #                 "Do not include markdown or explanations.\n\n"
-        #                 "Fields:\n"
-        #                 "- application_deadline\n"
-        #                 "- visa_sponsorship\n"
-        #                 "- visa_sponsorship_details\n"
-        #                 "- relocation_support\n"
-        #                 "- min_years_experience\n"
-        #                 "- max_years_experience\n"
-        #                 "- experience_level\n"
-        #                 "- skills\n"
-        #                 "- technologies\n"
-        #                 "- required_languages\n\n"
-        #                 f"Job:\n{json.dumps(job_context)}"
-        #             ),
-        #         }
-        #     ],
-        #     "model": "zai-org/GLM-5.3:novita",
-        # }
-        
         content = (
             "Extract structured information from this job posting.\n\n"
             "Return ONLY valid JSON.\n"
@@ -78,25 +46,26 @@ class LLMService:
             f"Job:\n{json.dumps(job_context)}"
         )
         try:
-            # response = requests.post(
-            #     self.API_URL,
-            #     headers=self.headers,
-            #     json=payload,
-            #     timeout=(10, 120),
-            # )
-
-            # response.raise_for_status()
-
-            # content = response.json()["choices"][0]["message"]["content"]
-
-            response = self.client.responses.create(
-                model="gpt-5.5",
-                # instructions=instructions,
-                input=content
+            response = requests.post(
+                url="https://openrouter.ai/api/v1/chat/completions",
+                headers=self.headers,
+                data=json.dumps({
+                    "model": "inclusionai/ling-3.0-flash-sante:free",
+                    "messages": [
+                        {
+                                "role": "user",
+                                "content": content
+                                }
+                    ],
+                }),
+                timeout=(10, 120)
             )
-            content = response.output_text
 
-            parsed = json.loads(content)
+            data = response.json()
+            print("data: ", data)
+            result = data["choices"][0]["message"]["content"]
+
+            parsed = self.parse_llm_json(result)
 
             return JobAIExtraction.model_validate(parsed)
 
@@ -113,4 +82,19 @@ class LLMService:
             return None
 
 
+    def parse_llm_json(self, result: str) -> dict:
+        result = result.strip()
+
+        if result.startswith("```json"):
+            result = result[len("```json"):]
+
+        elif result.startswith("```"):
+            result = result[len("```"):]
+
+        if result.endswith("```"):
+            result = result[:-3]
+
+        result = result.strip()
+
+        return json.loads(result)
 llm_service = LLMService()
