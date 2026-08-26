@@ -7,8 +7,8 @@ from app.service.llm_integration.llm_service import llm_service
 
 greenhouse_boards = [
     "Cloudbeds",
-    # "Ebury",
-    # "Parloa",
+    "Ebury",
+    "Parloa",
     # "Affirm",
     # "rtbhouse",
     # "n26",

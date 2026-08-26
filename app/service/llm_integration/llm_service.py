@@ -1,5 +1,4 @@
 import json
-from openai import OpenAI
 import requests
 from app.core.settings import settings
 from app.service.job_board.schema import JobAIExtraction, NormalizedJob
