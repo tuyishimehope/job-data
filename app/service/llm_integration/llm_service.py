@@ -1,7 +1,11 @@
 import json
+import logging
 import requests
 from app.core.settings import settings
 from app.service.job_board.schema import JobAIExtraction, NormalizedJob
+
+logger = logging.getLogger(__name__)
+
 
 class LLMService:
 
@@ -59,9 +63,37 @@ class LLMService:
                 }),
                 timeout=(10, 120)
             )
-
+            
+            response.raise_for_status()
             data = response.json()
-            print("data: ", data)
+
+            if "error" in data:
+                error = data["error"]
+
+                logger.warning(
+                    "LLM API returned an error",
+                    extra={
+                        "event": "llm_api_error",
+                        "error_code": error.get("code"),
+                        "error_message": error.get("message"),
+                        "job_title": job.title,
+                    },
+                )
+
+                return None
+                
+            if "choices" not in data:
+                logger.warning(
+                    "LLM response missing choices",
+                    extra={
+                        "event": "llm_invalid_response",
+                        "job_title": job.title,
+                        "company": job.company_name,
+                        "missing_field": "choices",
+                    },
+                )
+                return None
+            
             result = data["choices"][0]["message"]["content"]
 
             parsed = self.parse_llm_json(result)
@@ -69,17 +101,48 @@ class LLMService:
             return JobAIExtraction.model_validate(parsed)
 
         except requests.exceptions.ReadTimeout:
-            print(f"LLM timeout: {job.title}")
+            logger.warning(
+            "LLM request timed out",
+            extra={
+                "event": "llm_request_timeout",
+                "job_title": job.title,
+                "company": job.company_name,
+            },
+            )
             return None
 
-        except requests.exceptions.RequestException as exc:
-            print(f"LLM request failed: {exc}")
+        except requests.exceptions.RequestException:
+            logger.exception(
+                "LLM request failed",
+                extra={
+                    "event": "llm_request_failed",
+                    "job_title": job.title,
+                    "company": job.company_name,
+                },
+            )
             return None
 
-        except (json.JSONDecodeError, ValueError, KeyError) as exc:
-            print(f"Invalid LLM response: {exc}")
+        except json.JSONDecodeError:
+            logger.exception(
+                "LLM returned invalid JSON",
+                extra={
+                    "event": "llm_invalid_json",
+                    "job_title": job.title,
+                    "company": job.company_name,
+                },
+            )
             return None
 
+        except (ValueError, KeyError):
+            logger.exception(
+                "Invalid LLM response",
+                extra={
+                    "event": "llm_invalid_response",
+                    "job_title": job.title,
+                    "company": job.company_name,
+                },
+            )
+            return None
 
     def parse_llm_json(self, result: str) -> dict:
         result = result.strip()
@@ -96,4 +159,6 @@ class LLMService:
         result = result.strip()
 
         return json.loads(result)
+
+
 llm_service = LLMService()

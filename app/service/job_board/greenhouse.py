@@ -1,9 +1,13 @@
+import logging
 import requests
 
 from app.service.job_board.schema import NormalizedJob, JobSource
 from app.core.settings import settings
 from app.utils.job_fields import extract_experience_years, detect_visa_sponsorship, is_software_role
 from app.service.llm_integration.llm_service import llm_service
+
+logger = logging.getLogger(__name__)
+
 
 greenhouse_boards = [
     "Cloudbeds",
@@ -162,9 +166,6 @@ def classify_job(job: NormalizedJob) -> str:
 def ingest_all_companies():
     for company in greenhouse_boards:
         jobs = get_jobs_by_company(company)
-
-        # for job in jobs:
-        # save_job(job)
         return None
 
 
@@ -182,6 +183,11 @@ def search_job(visa_sponsorship: bool):
 
 
 def get_list_company():
+    logger.info("Querying list of jobs", extra={
+        "service": "Job ingestion api",
+        "environment": "development",
+        "event": "List of jobs",
+    })
     return greenhouse_boards
 
 
@@ -212,50 +218,87 @@ def get_all_jobs():
 
 
 def get_jobs_by_company(company: str):
-
-    url = f"{BASE_URL}/{company}{SUFFIX}"
-
-    http_response = requests.get(
-        url,
-        params={"content": "true"},
-        timeout=30,
+    logger.info(
+        "Starting Greenhouse ingestion company",
+        extra={
+            "company": company,
+            "service": "Job ingestion api",
+            "environment": settings.environment,
+            "event": "Get jobs in a company",
+            "company": company},
     )
 
-    if http_response.status_code == 404:
-        print(f"{company}: board not found")
+    url = f"{BASE_URL}/{company}{SUFFIX}"
+    try:
+        http_response = requests.get(
+            url,
+            params={"content": "true"},
+            timeout=30,
+        )
+
+        if http_response.status_code == 404:
+            logger.warning(
+                "Greenhouse board not found company=%s",
+                company,
+            )
+            return None
+
+        http_response.raise_for_status()
+        data = http_response.json()
+
+        if "meta" not in data:
+            logger.warning(
+                "Unexpected Greenhouse response",
+                extra={
+                    "event": "greenhouse_invalid_response",
+                    "company": company,
+                    "missing_field": "meta",
+                },
+            )
+            return None
+        else:
+            logger.info(
+                "Greenhouse jobs fetched",
+                extra={
+                    "event": "greenhouse_jobs_fetched",
+                    "company": company,
+                    "total": data["meta"]["total"],
+                },
+            )
+            response = []
+
+            for job in data["jobs"]:
+                greenhouse_job = NormalizedJob.model_validate(job)
+                greenhouse_job.source = JobSource.GREENHOUSE
+                greenhouse_job.company_name = company
+                greenhouse_job.visa_sponsorship = detect_visa_sponsorship(
+                    job['content'])
+                greenhouse_job.min_years_experience = extract_experience_years(
+                    job['content'])
+
+                classification = classify_job(greenhouse_job)
+
+                if classification == "candidate":
+                    response.append(greenhouse_job)
+
+            result = []
+
+            for job in response:
+                data = soft_filter(job=job)
+                if data is None:
+                    continue
+                result.append(data)
+
+            return result
+    except requests.exceptions.RequestException:
+        logger.exception(
+            "Greenhouse request failed",
+            extra={
+                "event": "greenhouse_request_failed",
+                "company": company,
+            },
+        )
         return None
-
-    data = http_response.json()
-
-    if 'meta' not in data:
-        return None
-    else:
-        print(f"{company}: {data['meta']['total']} jobs")
-        response = []
-
-        for job in data["jobs"]:
-            greenhouse_job = NormalizedJob.model_validate(job)
-            greenhouse_job.source = JobSource.GREENHOUSE
-            greenhouse_job.company_name = company
-            greenhouse_job.visa_sponsorship = detect_visa_sponsorship(
-                job['content'])
-            greenhouse_job.min_years_experience = extract_experience_years(
-                job['content'])
-
-            classification = classify_job(greenhouse_job)
-
-            if classification == "candidate":
-                response.append(greenhouse_job)
-
-        result = []
-
-        for job in response:
-            data = soft_filter(job=job)
-            if data is None:
-                continue
-            result.append(data)
-
-        return result
 
 
 def enrich_job(job: NormalizedJob) -> NormalizedJob:

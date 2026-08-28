@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     hf_url: str = ""
     OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
+    environment: str = ""
     
 
 settings = Settings()

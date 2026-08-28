@@ -30,17 +30,13 @@ def get_jobs_endpoint():
         "total": len(jobs),
         "jobs": jobs,
     }
-    
+
+
 @router.get("/ingest")
 def ingest_all_companies_endpoint():
     return {"status": "Pending"}
-    
+
+
 @router.get("/jobs/search")
 def search(visa_sponsorship: bool):
     return search_job(visa_sponsorship=visa_sponsorship)
-
-
-
-# GET /api/v1/job-board/jobs/{id}
-
-# GET /api/v1/job-board/jobs/matches
