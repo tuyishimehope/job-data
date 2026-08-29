@@ -224,7 +224,7 @@ def get_jobs_by_company(company: str):
             "company": company,
             "service": "Job ingestion api",
             "environment": settings.environment,
-            "event": "Get jobs in a company",
+            "event": "list_jobs_requested",
             "company": company},
     )
 

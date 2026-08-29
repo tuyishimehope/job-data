@@ -2,18 +2,24 @@ from datetime import datetime, timezone
 import json
 import logging
 from app.core.settings import settings
+from app.core.context import request_id_context
 
 
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+
         log_data = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
             "service": settings.app_name,
-            "environment": settings.environment
-        }
+            "environment": settings.environment}
+        request_id = request_id_context.get()
+
+
+        if request_id is not None:
+            log_data["request_id"] = request_id
 
         custom_fields = [
             "event",
@@ -22,6 +28,9 @@ class JSONFormatter(logging.Formatter):
             "job_title",
             "total",
             "status_code",
+            "http_method",
+            "http_path",
+            "duration_ms"
         ]
 
         for field in custom_fields:
@@ -39,12 +48,6 @@ class JSONFormatter(logging.Formatter):
 
 
 def configure_logging() -> None:
-    logging.basicConfig(level=logging.INFO, format=(
-        "%(asctime)s "
-        "%(levelname)s "
-        "%(name)s "
-        "%(message)s"
-    ),)
     handler = logging.StreamHandler()
     handler.setFormatter(JSONFormatter())
 
