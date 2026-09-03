@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     environment: str = ""
+    new_relic_license_key: str = ""
+    new_relic_user_key: str = ""
+    new_relic_log_url: str = ""
     
 
 settings = Settings()

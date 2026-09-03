@@ -5,6 +5,7 @@ from app.core.settings import settings
 from app.core.context import request_id_context
 
 
+
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
 
