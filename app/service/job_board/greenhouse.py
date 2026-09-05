@@ -1,6 +1,8 @@
 import logging
+from uuid import uuid4
 import requests
 
+from app.core.tracing import Span
 from app.service.job_board.schema import NormalizedJob, JobSource
 from app.core.settings import settings
 from app.utils.job_fields import extract_experience_years, detect_visa_sponsorship, is_software_role
@@ -218,6 +220,11 @@ def get_all_jobs():
 
 
 def get_jobs_by_company(company: str):
+    trace_id = str(uuid4())
+    root_span = Span(
+                name="GET /companies/"+company,
+                trace_id=trace_id,
+            )
     logger.info(
         "Starting Greenhouse ingestion company",
         extra={
@@ -230,6 +237,12 @@ def get_jobs_by_company(company: str):
 
     url = f"{BASE_URL}/{company}{SUFFIX}"
     try:
+       
+        child_span = Span(
+            name="fetch_greenhouse_jobs",
+            trace_id=trace_id,
+            parent_span_id=root_span.span_id,
+        )
         http_response = requests.get(
             url,
             params={"content": "true"},
@@ -299,6 +312,9 @@ def get_jobs_by_company(company: str):
             },
         )
         return None
+    finally:
+        root_span.finish()
+        child_span.finish()
 
 
 def enrich_job(job: NormalizedJob) -> NormalizedJob:

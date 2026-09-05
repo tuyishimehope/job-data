@@ -5,7 +5,6 @@ from app.core.settings import settings
 from app.core.context import request_id_context
 
 
-
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
 
@@ -17,7 +16,6 @@ class JSONFormatter(logging.Formatter):
             "service": settings.app_name,
             "environment": settings.environment}
         request_id = request_id_context.get()
-
 
         if request_id is not None:
             log_data["request_id"] = request_id
