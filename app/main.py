@@ -21,35 +21,35 @@ app.include_router(router=job_board_router)
 
 app.middleware("http")(request_context_middleware)
 
-http_requests_total = Counter()
-active_http_requests = Gauge()
-http_request_duration_ms = Histogram([])
+# http_requests_total = Counter()
+# active_http_requests = Gauge()
+# http_request_duration_ms = Histogram([])
 
 
-@app.middleware("http")
-async def request_context_middleware(
-    request: Request,
-    call_next,
-):
+# @app.middleware("http")
+# async def request_context_middleware(
+#     request: Request,
+#     call_next,
+# ):
 
-    active_http_requests.increment()
-    start_time = perf_counter()
+#     active_http_requests.increment()
+#     start_time = perf_counter()
 
-    try:
-        response = await call_next(request)
-        duration_ms = (
-            perf_counter() - start_time
-        ) * 1000
-        http_requests_total.increment(
-            labels=(request.method, response.status_code))
-        http_request_duration_ms.observe(
-            duration_ms
-        )
+#     try:
+#         response = await call_next(request)
+#         duration_ms = (
+#             perf_counter() - start_time
+#         ) * 1000
+#         http_requests_total.increment(
+#             labels=(request.method, response.status_code))
+#         http_request_duration_ms.observe(
+#             duration_ms
+#         )
 
-        return response
+#         return response
 
-    finally:
-        active_http_requests.decrement()
+#     finally:
+#         active_http_requests.decrement()
 
 
 @app.get("/health")

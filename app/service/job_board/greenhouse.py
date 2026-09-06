@@ -1,6 +1,7 @@
 import logging
 from uuid import uuid4
 import requests
+import newrelic.agent
 
 from app.core.tracing import Span
 from app.service.job_board.schema import NormalizedJob, JobSource
@@ -186,8 +187,6 @@ def search_job(visa_sponsorship: bool):
 
 def get_list_company():
     logger.info("Querying list of jobs", extra={
-        "service": "Job ingestion api",
-        "environment": "development",
         "event": "List of jobs",
     })
     return greenhouse_boards
@@ -210,39 +209,38 @@ def get_all_jobs():
             if classification == "candidate":
                 all_jobs.append(job)
 
-    result = []
-    for job in all_jobs:
-        job = soft_filter(job)
-        if job is None:
-            continue
-        result.append(job)
-    return result
+    # result = []
+    # for job in all_jobs:
+    #     job = soft_filter(job)
+    #     if job is None:
+    #         continue
+    #     result.append(job)
+    # return result
+    return enrich_and_filter_jobs(all_jobs)
 
 
 def get_jobs_by_company(company: str):
-    trace_id = str(uuid4())
-    root_span = Span(
-                name="GET /companies/"+company,
-                trace_id=trace_id,
-            )
+    # trace_id = str(uuid4())
+    # root_span = Span(
+    #     name="GET /companies/"+company,
+    #     trace_id=trace_id,
+    # )
     logger.info(
         "Starting Greenhouse ingestion company",
         extra={
             "company": company,
-            "service": "Job ingestion api",
-            "environment": settings.environment,
             "event": "list_jobs_requested",
             "company": company},
     )
 
     url = f"{BASE_URL}/{company}{SUFFIX}"
     try:
-       
-        child_span = Span(
-            name="fetch_greenhouse_jobs",
-            trace_id=trace_id,
-            parent_span_id=root_span.span_id,
-        )
+
+        # child_span = Span(
+        #     name="fetch_greenhouse_jobs",
+        #     trace_id=trace_id,
+        #     parent_span_id=root_span.span_id,
+        # )
         http_response = requests.get(
             url,
             params={"content": "true"},
@@ -294,15 +292,16 @@ def get_jobs_by_company(company: str):
                 if classification == "candidate":
                     response.append(greenhouse_job)
 
-            result = []
+            # result = []
 
-            for job in response:
-                data = soft_filter(job=job)
-                if data is None:
-                    continue
-                result.append(data)
+            # for job in response:
+            #     data = soft_filter(job=job)
+            #     if data is None:
+            #         continue
+            #     result.append(data)
 
-            return result
+            # return result
+            return enrich_and_filter_jobs(response)
     except requests.exceptions.RequestException:
         logger.exception(
             "Greenhouse request failed",
@@ -313,8 +312,9 @@ def get_jobs_by_company(company: str):
         )
         return None
     finally:
-        root_span.finish()
-        child_span.finish()
+        pass
+        # root_span.finish()
+        # child_span.finish()
 
 
 def enrich_job(job: NormalizedJob) -> NormalizedJob:
@@ -344,3 +344,23 @@ def soft_filter(job: NormalizedJob) -> NormalizedJob | None:
             return None
 
     return data
+
+
+@newrelic.agent.function_trace(
+    name="enrich_and_filter_jobs"
+)
+def enrich_and_filter_jobs(
+    jobs: list[NormalizedJob],
+) -> list[NormalizedJob]:
+
+    result = []
+
+    for job in jobs:
+        data = soft_filter(job)
+
+        if data is None:
+            continue
+
+        result.append(data)
+
+    return result
