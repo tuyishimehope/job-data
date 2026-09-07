@@ -13,9 +13,12 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     environment: str = ""
-    new_relic_license_key: str = ""
+    NEW_RELIC_LICENSE_KEY: str = ""
     new_relic_user_key: str = ""
     new_relic_log_url: str = ""
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_PROTOCOL: str = ""
+    OTEL_EXPORTER_OTLP_HEADERS: str =""
     
 
 settings = Settings()

@@ -8,7 +8,7 @@ class NewRelicLogClient:
         self.url = settings.new_relic_log_url
 
         self.headers = {
-            "Api-Key": settings.new_relic_license_key,
+            "Api-Key": settings.NEW_RELIC_LICENSE_KEY,
             "Content-Type": "application/json",
         }
 

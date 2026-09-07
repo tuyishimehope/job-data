@@ -8,5 +8,6 @@ entrypoint="app.main:app"
 dependencies = [
     "fastapi[standard]",
     "pydantic-settings",
-    "requests"
+    "requests",
+    "opentelemetry-exporter-otlp-proto-http"
 ]

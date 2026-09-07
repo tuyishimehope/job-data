@@ -1,14 +1,14 @@
 import logging
-from uuid import uuid4
 import requests
-import newrelic.agent
+from opentelemetry import trace
 
-from app.core.tracing import Span
 from app.service.job_board.schema import NormalizedJob, JobSource
 from app.core.settings import settings
 from app.utils.job_fields import extract_experience_years, detect_visa_sponsorship, is_software_role
 from app.service.llm_integration.llm_service import llm_service
 
+
+tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
 
 
@@ -220,11 +220,6 @@ def get_all_jobs():
 
 
 def get_jobs_by_company(company: str):
-    # trace_id = str(uuid4())
-    # root_span = Span(
-    #     name="GET /companies/"+company,
-    #     trace_id=trace_id,
-    # )
     logger.info(
         "Starting Greenhouse ingestion company",
         extra={
@@ -235,12 +230,6 @@ def get_jobs_by_company(company: str):
 
     url = f"{BASE_URL}/{company}{SUFFIX}"
     try:
-
-        # child_span = Span(
-        #     name="fetch_greenhouse_jobs",
-        #     trace_id=trace_id,
-        #     parent_span_id=root_span.span_id,
-        # )
         http_response = requests.get(
             url,
             params={"content": "true"},
@@ -292,15 +281,6 @@ def get_jobs_by_company(company: str):
                 if classification == "candidate":
                     response.append(greenhouse_job)
 
-            # result = []
-
-            # for job in response:
-            #     data = soft_filter(job=job)
-            #     if data is None:
-            #         continue
-            #     result.append(data)
-
-            # return result
             return enrich_and_filter_jobs(response)
     except requests.exceptions.RequestException:
         logger.exception(
@@ -311,10 +291,6 @@ def get_jobs_by_company(company: str):
             },
         )
         return None
-    finally:
-        pass
-        # root_span.finish()
-        # child_span.finish()
 
 
 def enrich_job(job: NormalizedJob) -> NormalizedJob:
@@ -346,21 +322,31 @@ def soft_filter(job: NormalizedJob) -> NormalizedJob | None:
     return data
 
 
-@newrelic.agent.function_trace(
-    name="enrich_and_filter_jobs"
-)
+
 def enrich_and_filter_jobs(
     jobs: list[NormalizedJob],
 ) -> list[NormalizedJob]:
+    with tracer.start_as_current_span(
+        "enrich_and_filter_jobs"
+    )as span:
+        span.set_attribute(
+            "jobs.input_count",
+            len(jobs),
+        )
 
-    result = []
+        result = []
 
-    for job in jobs:
-        data = soft_filter(job)
+        for job in jobs:
+            data = soft_filter(job)
 
-        if data is None:
-            continue
+            if data is None:
+                continue
 
-        result.append(data)
+            result.append(data)
 
-    return result
+        span.set_attribute(
+            "jobs.output_count",
+            len(result),
+        )
+
+        return result
