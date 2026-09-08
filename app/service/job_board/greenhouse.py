@@ -219,79 +219,134 @@ def get_all_jobs():
     return enrich_and_filter_jobs(all_jobs)
 
 
-def get_jobs_by_company(company: str):
-    logger.info(
-        "Starting Greenhouse ingestion company",
-        extra={
-            "company": company,
-            "event": "list_jobs_requested",
-            "company": company},
-    )
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
+def get_jobs_by_company(company: str):
     url = f"{BASE_URL}/{company}{SUFFIX}"
-    try:
-        http_response = requests.get(
-            url,
-            params={"content": "true"},
-            timeout=30,
+
+    with tracer.start_as_current_span(
+        "greenhouse.fetch_jobs"
+    ) as span:
+        span.set_attribute(
+            "job.source",
+            "greenhouse",
+        )
+        span.set_attribute(
+            "job.company",
+            company,
         )
 
-        if http_response.status_code == 404:
-            logger.warning(
-                "Greenhouse board not found company=%s",
-                company,
+        try:
+            http_response = requests.get(
+                url,
+                params={"content": "true"},
+                timeout=30,
             )
-            return None
 
-        http_response.raise_for_status()
-        data = http_response.json()
+            span.set_attribute(
+                "http.response.status_code",
+                http_response.status_code,
+            )
 
-        if "meta" not in data:
-            logger.warning(
-                "Unexpected Greenhouse response",
-                extra={
-                    "event": "greenhouse_invalid_response",
-                    "company": company,
-                    "missing_field": "meta",
-                },
+            if http_response.status_code == 404:
+                span.set_attribute(
+                    "greenhouse.board_found",
+                    False,
+                )
+
+                span.set_status(
+                    Status(
+                        StatusCode.ERROR,
+                        "Greenhouse board not found",
+                    )
+                )
+
+                return None
+
+            http_response.raise_for_status()
+
+            data = http_response.json()
+
+            if "meta" not in data:
+                span.set_status(
+                    Status(
+                        StatusCode.ERROR,
+                        "Missing meta field",
+                    )
+                )
+
+                span.add_event(
+                    "greenhouse.invalid_response"
+                )
+
+                return None
+
+            jobs = data["jobs"]
+
+            span.set_attribute(
+                "jobs.fetched_count",
+                len(jobs),
             )
-            return None
-        else:
-            logger.info(
-                "Greenhouse jobs fetched",
-                extra={
-                    "event": "greenhouse_jobs_fetched",
-                    "company": company,
-                    "total": data["meta"]["total"],
-                },
-            )
+
             response = []
 
-            for job in data["jobs"]:
-                greenhouse_job = NormalizedJob.model_validate(job)
-                greenhouse_job.source = JobSource.GREENHOUSE
-                greenhouse_job.company_name = company
-                greenhouse_job.visa_sponsorship = detect_visa_sponsorship(
-                    job['content'])
-                greenhouse_job.min_years_experience = extract_experience_years(
-                    job['content'])
+            for job in jobs:
+                greenhouse_job = (
+                    NormalizedJob.model_validate(job)
+                )
 
-                classification = classify_job(greenhouse_job)
+                greenhouse_job.source = (
+                    JobSource.GREENHOUSE
+                )
+
+                greenhouse_job.company_name = company
+
+                greenhouse_job.visa_sponsorship = (
+                    detect_visa_sponsorship(
+                        job["content"]
+                    )
+                )
+
+                greenhouse_job.min_years_experience = (
+                    extract_experience_years(
+                        job["content"]
+                    )
+                )
+
+                classification = classify_job(
+                    greenhouse_job
+                )
 
                 if classification == "candidate":
-                    response.append(greenhouse_job)
+                    response.append(
+                        greenhouse_job
+                    )
 
-            return enrich_and_filter_jobs(response)
-    except requests.exceptions.RequestException:
-        logger.exception(
-            "Greenhouse request failed",
-            extra={
-                "event": "greenhouse_request_failed",
-                "company": company,
-            },
-        )
-        return None
+            span.set_attribute(
+                "jobs.candidate_count",
+                len(response),
+            )
 
+            span.set_status(
+                Status(StatusCode.OK)
+            )
+
+            return enrich_and_filter_jobs(
+                response
+            )
+
+        except requests.exceptions.RequestException as exc:
+            span.record_exception(exc)
+
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    str(exc),
+                )
+            )
+
+            raise
 
 def enrich_job(job: NormalizedJob) -> NormalizedJob:
     extraction = llm_service.extract_fields(job)
