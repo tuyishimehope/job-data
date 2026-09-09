@@ -1,7 +1,9 @@
 import logging
-from uuid import uuid4
 from time import perf_counter
-from fastapi import  Request
+from uuid import uuid4
+
+from fastapi import Request
+
 from app.core.context import request_id_context
 
 logger = logging.getLogger(__name__)
@@ -11,10 +13,7 @@ async def request_context_middleware(
     request: Request,
     call_next,
 ):
-    request_id = (
-        request.headers.get("X-Request-ID")
-        or str(uuid4())
-    )
+    request_id = request.headers.get("X-Request-ID") or str(uuid4())
 
     token = request_id_context.set(request_id)
 
@@ -32,9 +31,7 @@ async def request_context_middleware(
     try:
         response = await call_next(request)
 
-        duration_ms = (
-            perf_counter() - start_time
-        ) * 1000
+        duration_ms = (perf_counter() - start_time) * 1000
 
         logger.info(
             "HTTP request completed",
@@ -52,9 +49,7 @@ async def request_context_middleware(
         return response
 
     except Exception:
-        duration_ms = (
-            perf_counter() - start_time
-        ) * 1000
+        duration_ms = (perf_counter() - start_time) * 1000
 
         logger.exception(
             "HTTP request failed",

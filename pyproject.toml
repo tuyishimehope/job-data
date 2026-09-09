@@ -3,11 +3,56 @@ name = "jobdata"
 version = "0.1.0"
 description = "Job ingestion platform backend"
 requires-python = ">=3.13"
-entrypoint="app.main:app"
 
 dependencies = [
     "fastapi[standard]",
     "pydantic-settings",
     "requests",
-    "opentelemetry-exporter-otlp-proto-http"
+
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-requests",
+    "opentelemetry-exporter-otlp-proto-http",
 ]
+
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "ruff",
+    "mypy",
+]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # Pyflakes
+    "I",    # import sorting
+    "B",    # bugbear
+    "UP",   # Python syntax upgrades
+]
+
+ignore = []
+
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

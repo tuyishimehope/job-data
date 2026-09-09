@@ -1,20 +1,21 @@
 import logging
-from fastapi import FastAPI
-from opentelemetry import trace
 
-from app.api.v1.job_board.job_board import router as job_board_router
-from app.core.logging import configure_logging
-from app.middleware.request_context import request_context_middleware
-from app.infrastructure.observability.tracing import (
-    configure_tracing,
-)
+from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import (
     FastAPIInstrumentor,
 )
 from opentelemetry.instrumentation.requests import (
     RequestsInstrumentor,
 )
-from app.infrastructure.observability.tracing import configure_otel_logging, configure_metrics
+
+from app.api.v1.job_board.job_board import router as job_board_router
+from app.core.logging import configure_logging
+from app.infrastructure.observability.tracing import (
+    configure_metrics,
+    configure_otel_logging,
+    configure_tracing,
+)
+from app.middleware.request_context import request_context_middleware
 
 configure_logging()
 configure_tracing()
@@ -36,4 +37,3 @@ RequestsInstrumentor().instrument()
 def health():
     logger.info("Server is healthy")
     return {"status": "Healthy"}
-

@@ -1,12 +1,17 @@
 import logging
+
 import requests
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
-from app.service.job_board.schema import NormalizedJob, JobSource
 from app.core.settings import settings
-from app.utils.job_fields import extract_experience_years, detect_visa_sponsorship, is_software_role
+from app.service.job_board.schema import JobSource, NormalizedJob
 from app.service.llm_integration.llm_service import llm_service
-
+from app.utils.job_fields import (
+    detect_visa_sponsorship,
+    extract_experience_years,
+    is_software_role,
+)
 
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
@@ -16,39 +21,37 @@ greenhouse_boards = [
     "Cloudbeds",
     "Ebury",
     "Parloa",
-    # "Affirm",
-    # "rtbhouse",
-    # "n26",
-    # "celonis",
-    # "ionos",
-    #
-    # "hellofresh",
-    # "coinbase",
-    # "algolia",
-    # "squarespace",
-    # "prisma",
-    # "nice",
-    # "atolls",
-    # "dremio",
-    # "remote",
-    # "Canonical",
-    #
-    # "AlphaSights",
-    # "Tripadvisor",
-    # "Samsara",
-    # "Contentful",
-    # "Salsify",
-    # "Squarespace",
-    # "Rithum",
-    # "Monzo",
-    # "Optiver",
-    # "Vercel",
-    # "proton",
-    # "yld",
-    # "apaleo",
-    # "isomorphiclabs",
-    # "canonical",
-    # "ninjatrader",
+    "Affirm",
+    "rtbhouse",
+    "n26",
+    "celonis",
+    "ionos",
+    "hellofresh",
+    "coinbase",
+    "algolia",
+    "squarespace",
+    "prisma",
+    "nice",
+    "atolls",
+    "dremio",
+    "remote",
+    "Canonical",
+    "AlphaSights",
+    "Tripadvisor",
+    "Samsara",
+    "Contentful",
+    "Salsify",
+    "Squarespace",
+    "Rithum",
+    "Monzo",
+    "Optiver",
+    "Vercel",
+    "proton",
+    "yld",
+    "apaleo",
+    "isomorphiclabs",
+    "canonical",
+    "ninjatrader",
 ]
 
 ROLE_KEYWORDS = {
@@ -64,7 +67,7 @@ ROLE_KEYWORDS = {
     "Java Engineer",
     "Early Career Software Engineer",
     "Software Developer",
-    "Graduate Developer"
+    "Graduate Developer",
 }
 
 SENIORITY_EXCLUSIONS = {
@@ -75,27 +78,29 @@ SENIORITY_EXCLUSIONS = {
     "director",
     "manager",
     "head",
-    "vp"
+    "vp",
 }
 
-skills = ["Python",
-          "Java",
-          "FastAPI",
-          "springboot",
-          "nodejs",
-          "Reactjs",
-          "Typescript",
-          "Html",
-          "css",
-          "javascript",
-          "PostgreSQL",
-          "SQL",
-          "LLM",
-          "RAG",
-          "Docker",
-          "AWS",
-          "REST APIs",
-          "Distributed Systems"]
+skills = [
+    "Python",
+    "Java",
+    "FastAPI",
+    "springboot",
+    "nodejs",
+    "Reactjs",
+    "Typescript",
+    "Html",
+    "css",
+    "javascript",
+    "PostgreSQL",
+    "SQL",
+    "LLM",
+    "RAG",
+    "Docker",
+    "AWS",
+    "REST APIs",
+    "Distributed Systems",
+]
 
 fit_role = {
     "target_roles": ROLE_KEYWORDS,
@@ -109,12 +114,10 @@ fit_role = {
     #     "Italy",
     #     "Ireland"
     # ],
-    "languages": [
-        "English"
-    ],
+    "languages": ["English"],
     "max_experience_years": 2,
     "visa_sponsorship": True,
-    "relocation": True
+    "relocation": True,
 }
 
 VISA_POSITIVE_PATTERNS = [
@@ -138,16 +141,19 @@ def classify_seniority(title: str) -> str:
     if "senior" in title:
         return "senior"
 
-    if any(x in title for x in {
-        "junior",
-        "associate",
-        "graduate",
-        "new grad",
-        "entry level",
-        "entry-level",
-        "early career",
-        "intern",
-    }):
+    if any(
+        x in title
+        for x in {
+            "junior",
+            "associate",
+            "graduate",
+            "new grad",
+            "entry level",
+            "entry-level",
+            "early career",
+            "intern",
+        }
+    ):
         return "early"
 
     return "unknown"
@@ -169,26 +175,25 @@ def classify_job(job: NormalizedJob) -> str:
 def ingest_all_companies():
     for company in greenhouse_boards:
         jobs = get_jobs_by_company(company)
-        return None
+        return jobs
 
 
 def search_job(visa_sponsorship: bool):
     import json
 
-    with open("app/examples/greenhouse_jobs.json", "r", encoding="utf-8") as file:
+    with open("app/examples/greenhouse_jobs.json", encoding="utf-8") as file:
         data = json.load(file)
 
-    return [
-        s
-        for s in data["jobs"]
-        if s["visa_sponsorship"] == visa_sponsorship
-    ]
+    return [s for s in data["jobs"] if s["visa_sponsorship"] == visa_sponsorship]
 
 
 def get_list_company():
-    logger.info("Querying list of jobs", extra={
-        "event": "List of jobs",
-    })
+    logger.info(
+        "Querying list of jobs",
+        extra={
+            "event": "List of jobs",
+        },
+    )
     return greenhouse_boards
 
 
@@ -197,7 +202,6 @@ def get_all_jobs():
     all_jobs = []
 
     for company in greenhouse_boards:
-
         data = get_jobs_by_company(company)
 
         if data is None:
@@ -209,25 +213,13 @@ def get_all_jobs():
             if classification == "candidate":
                 all_jobs.append(job)
 
-    # result = []
-    # for job in all_jobs:
-    #     job = soft_filter(job)
-    #     if job is None:
-    #         continue
-    #     result.append(job)
-    # return result
     return enrich_and_filter_jobs(all_jobs)
 
-
-from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
 
 def get_jobs_by_company(company: str):
     url = f"{BASE_URL}/{company}{SUFFIX}"
 
-    with tracer.start_as_current_span(
-        "greenhouse.fetch_jobs"
-    ) as span:
+    with tracer.start_as_current_span("greenhouse.fetch_jobs") as span:
         span.set_attribute(
             "job.source",
             "greenhouse",
@@ -276,9 +268,7 @@ def get_jobs_by_company(company: str):
                     )
                 )
 
-                span.add_event(
-                    "greenhouse.invalid_response"
-                )
+                span.add_event("greenhouse.invalid_response")
 
                 return None
 
@@ -292,49 +282,33 @@ def get_jobs_by_company(company: str):
             response = []
 
             for job in jobs:
-                greenhouse_job = (
-                    NormalizedJob.model_validate(job)
-                )
+                greenhouse_job = NormalizedJob.model_validate(job)
 
-                greenhouse_job.source = (
-                    JobSource.GREENHOUSE
-                )
+                greenhouse_job.source = JobSource.GREENHOUSE
 
                 greenhouse_job.company_name = company
 
-                greenhouse_job.visa_sponsorship = (
-                    detect_visa_sponsorship(
-                        job["content"]
-                    )
+                greenhouse_job.visa_sponsorship = detect_visa_sponsorship(
+                    job["content"]
                 )
 
-                greenhouse_job.min_years_experience = (
-                    extract_experience_years(
-                        job["content"]
-                    )
+                greenhouse_job.min_years_experience = extract_experience_years(
+                    job["content"]
                 )
 
-                classification = classify_job(
-                    greenhouse_job
-                )
+                classification = classify_job(greenhouse_job)
 
                 if classification == "candidate":
-                    response.append(
-                        greenhouse_job
-                    )
+                    response.append(greenhouse_job)
 
             span.set_attribute(
                 "jobs.candidate_count",
                 len(response),
             )
 
-            span.set_status(
-                Status(StatusCode.OK)
-            )
+            span.set_status(Status(StatusCode.OK))
 
-            return enrich_and_filter_jobs(
-                response
-            )
+            return enrich_and_filter_jobs(response)
 
         except requests.exceptions.RequestException as exc:
             span.record_exception(exc)
@@ -347,6 +321,7 @@ def get_jobs_by_company(company: str):
             )
 
             raise
+
 
 def enrich_job(job: NormalizedJob) -> NormalizedJob:
     extraction = llm_service.extract_fields(job)
@@ -377,13 +352,10 @@ def soft_filter(job: NormalizedJob) -> NormalizedJob | None:
     return data
 
 
-
 def enrich_and_filter_jobs(
     jobs: list[NormalizedJob],
 ) -> list[NormalizedJob]:
-    with tracer.start_as_current_span(
-        "enrich_and_filter_jobs"
-    )as span:
+    with tracer.start_as_current_span("enrich_and_filter_jobs") as span:
         span.set_attribute(
             "jobs.input_count",
             len(jobs),

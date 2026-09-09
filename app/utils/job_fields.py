@@ -13,7 +13,7 @@ ROLE_KEYWORDS = {
     "Java Engineer",
     "Early Career Software Engineer",
     "Software Developer",
-    "Graduate Developer"
+    "Graduate Developer",
 }
 
 
@@ -72,7 +72,4 @@ def detect_visa_sponsorship(text: str) -> bool | None:
 def is_software_role(title: str) -> bool:
     title = title.lower()
 
-    return any(
-        keyword in title
-        for keyword in ROLE_KEYWORDS
-    )
+    return any(keyword in title for keyword in ROLE_KEYWORDS)

@@ -24,5 +24,3 @@ class NewRelicLogClient:
 
 
 new_relic_log_client = NewRelicLogClient()
-
-

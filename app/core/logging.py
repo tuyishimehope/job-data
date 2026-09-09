@@ -1,20 +1,22 @@
-from datetime import datetime, timezone
 import json
 import logging
-from app.core.settings import settings
+from datetime import UTC, datetime
+
 from app.core.context import request_id_context
+from app.core.settings import settings
 
 
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
 
         log_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
             "service": settings.app_name,
-            "environment": settings.environment}
+            "environment": settings.environment,
+        }
         request_id = request_id_context.get()
 
         if request_id is not None:
@@ -29,7 +31,7 @@ class JSONFormatter(logging.Formatter):
             "status_code",
             "http_method",
             "http_path",
-            "duration_ms"
+            "duration_ms",
         ]
 
         for field in custom_fields:
@@ -39,9 +41,7 @@ class JSONFormatter(logging.Formatter):
                 log_data[field] = value
 
         if record.exc_info:
-            log_data["exception"] = self.formatException(
-                record.exc_info
-            )
+            log_data["exception"] = self.formatException(record.exc_info)
 
         return json.dumps(log_data)
 

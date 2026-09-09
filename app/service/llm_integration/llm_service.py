@@ -1,6 +1,8 @@
 import json
 import logging
+
 import requests
+
 from app.core.settings import settings
 from app.service.job_board.schema import JobAIExtraction, NormalizedJob
 
@@ -8,11 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class LLMService:
-
     def __init__(self):
         self.headers = {
             "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-            "Content-type": "application/json"
+            "Content-type": "application/json",
         }
 
     def extract_fields(
@@ -23,11 +24,7 @@ class LLMService:
         job_context = {
             "title": job.title,
             "company_name": job.company_name,
-            "location": (
-                job.location.model_dump()
-                if job.location
-                else None
-            ),
+            "location": (job.location.model_dump() if job.location else None),
             "content": job.content,
         }
 
@@ -52,18 +49,15 @@ class LLMService:
             response = requests.post(
                 url="https://openrouter.ai/api/v1/chat/completions",
                 headers=self.headers,
-                data=json.dumps({
-                    "model": "inclusionai/ling-3.0-flash-sante:free",
-                    "messages": [
-                        {
-                                "role": "user",
-                                "content": content
-                                }
-                    ],
-                }),
-                timeout=(10, 120)
+                data=json.dumps(
+                    {
+                        "model": "inclusionai/ling-3.0-flash-sante:free",
+                        "messages": [{"role": "user", "content": content}],
+                    }
+                ),
+                timeout=(10, 120),
             )
-            
+
             response.raise_for_status()
             data = response.json()
 
@@ -81,7 +75,7 @@ class LLMService:
                 )
 
                 return None
-                
+
             if "choices" not in data:
                 logger.warning(
                     "LLM response missing choices",
@@ -93,7 +87,7 @@ class LLMService:
                     },
                 )
                 return None
-            
+
             result = data["choices"][0]["message"]["content"]
 
             parsed = self.parse_llm_json(result)
@@ -102,12 +96,12 @@ class LLMService:
 
         except requests.exceptions.ReadTimeout:
             logger.warning(
-            "LLM request timed out",
-            extra={
-                "event": "llm_request_timeout",
-                "job_title": job.title,
-                "company": job.company_name,
-            },
+                "LLM request timed out",
+                extra={
+                    "event": "llm_request_timeout",
+                    "job_title": job.title,
+                    "company": job.company_name,
+                },
             )
             return None
 
@@ -148,10 +142,10 @@ class LLMService:
         result = result.strip()
 
         if result.startswith("```json"):
-            result = result[len("```json"):]
+            result = result[len("```json") :]
 
         elif result.startswith("```"):
-            result = result[len("```"):]
+            result = result[len("```") :]
 
         if result.endswith("```"):
             result = result[:-3]

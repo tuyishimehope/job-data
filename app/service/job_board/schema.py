@@ -1,18 +1,17 @@
-from pydantic import BaseModel, Field
-
 from datetime import datetime
-from enum import Enum
-from pydantic import BaseModel, HttpUrl
+from enum import StrEnum
+
+from pydantic import BaseModel, Field, HttpUrl
 
 
-class RemoteType(str, Enum):
+class RemoteType(StrEnum):
     ONSITE = "onsite"
     HYBRID = "hybrid"
     REMOTE = "remote"
     UNKNOWN = "unknown"
 
 
-class ExperienceLevel(str, Enum):
+class ExperienceLevel(StrEnum):
     INTERN = "intern"
     ENTRY = "entry"
     JUNIOR = "junior"
@@ -25,7 +24,7 @@ class ExperienceLevel(str, Enum):
     UNKNOWN = "unknown"
 
 
-class EmploymentType(str, Enum):
+class EmploymentType(StrEnum):
     FULL_TIME = "full_time"
     PART_TIME = "part_time"
     CONTRACT = "contract"
@@ -35,7 +34,7 @@ class EmploymentType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class JobSource(str, Enum):
+class JobSource(StrEnum):
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
     ASHBY = "ashby"
@@ -45,7 +44,7 @@ class JobSource(str, Enum):
     OTHER = "other"
 
 
-class SalaryPeriod(str, Enum):
+class SalaryPeriod(StrEnum):
     HOURLY = "hourly"
     MONTHLY = "monthly"
     YEARLY = "yearly"

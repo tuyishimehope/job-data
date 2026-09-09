@@ -1,6 +1,11 @@
 from fastapi import APIRouter
 
-from app.service.job_board.greenhouse import get_all_jobs, get_jobs_by_company, get_list_company, search_job
+from app.service.job_board.greenhouse import (
+    get_all_jobs,
+    get_jobs_by_company,
+    get_list_company,
+    search_job,
+)
 
 router = APIRouter(prefix="/api/v1/job-board", tags=["/job-board"])
 
