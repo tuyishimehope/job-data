@@ -1,564 +1,337 @@
-# Job Data Ingestion Platform
+# Job Data Ingestion Platform Backend
 
-A backend service for ingesting, normalizing, filtering, and enriching software engineering job postings from external job-board APIs.
+A Python backend for fetching Greenhouse job postings, filtering software engineering roles, and enriching job descriptions with structured fields through OpenRouter. FastAPI exposes the results over HTTP, with JSON logging and OpenTelemetry instrumentation.
 
-The platform currently integrates with Greenhouse job boards, identifies relevant software engineering opportunities, extracts structured job information, and exposes the resulting data through a FastAPI REST API.
+**Status: development.** Requests perform ingestion synchronously. There is no database, background worker, or scheduler. Search currently reads a bundled JSON fixture, and the ingestion endpoint is a placeholder. See [Current limitations](#current-limitations) before relying on live results.
 
-The project also includes production-oriented observability using OpenTelemetry for distributed tracing, metrics, and structured logging.
+## Contents
 
----
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [API reference](#api-reference)
+- [Processing pipeline](#processing-pipeline)
+- [Data models](#data-models)
+- [Observability](#observability)
+- [Project structure](#project-structure)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Current limitations](#current-limitations)
 
-## Overview
+## Quick start
 
-Job postings from different companies contain inconsistent titles, descriptions, experience requirements, visa information, and other metadata.
+### Requirements
 
-The Job Data Ingestion Platform provides a pipeline for converting this external job data into a consistent internal representation.
+- Python **3.13 or newer**, as declared in `pyproject.toml`.
+- `pip` and a virtual environment.
+- Network access to Greenhouse for live job requests.
+- An OpenRouter API key for successful LLM enrichment.
+- A New Relic ingest license key for successful telemetry export.
 
-The current processing flow is:
+Health, company listing, and fixture search do not call Greenhouse or the LLM. However, telemetry exporters are initialized for the entire application and attempt to export even when credentials are empty.
 
-```text
-Greenhouse API
-      │
-      ▼
-Fetch Job Postings
-      │
-      ▼
-Normalize Job Data
-      │
-      ▼
-Software Role Classification
-      │
-      ▼
-Experience / Visa Detection
-      │
-      ▼
-LLM Enrichment
-      │
-      ▼
-Soft Filtering
-      │
-      ▼
-Normalized API Response
-```
+### Install
 
-The platform is currently focused on software engineering roles, particularly early-career opportunities.
-
----
-
-## Features
-
-### Job Ingestion
-
-- Fetch job postings from Greenhouse job boards
-- Ingest jobs for individual companies
-- Ingest jobs across configured companies
-- Handle unavailable Greenhouse boards
-- Normalize external job data into a common schema
-
-### Job Classification
-
-The platform performs an initial classification before expensive enrichment operations.
-
-It can:
-
-- Identify software engineering roles
-- Detect seniority from job titles
-- Exclude senior, staff, principal, lead, management, and similar roles
-- Identify junior, graduate, associate, new-grad, internship, and early-career roles
-
-### Job Information Extraction
-
-Job descriptions are analyzed to extract information such as:
-
-- Minimum experience requirements
-- Visa sponsorship information
-- Experience level
-- Relevant structured job attributes
-
-### LLM Enrichment
-
-Candidate jobs can be passed through the configured LLM integration to extract additional structured fields.
-
-This provides a hybrid processing pipeline:
-
-```text
-Deterministic extraction
-        +
-LLM-based extraction
-        +
-Filtering
-```
-
-The deterministic filters reduce the number of irrelevant jobs sent to the LLM.
-
-### Observability
-
-The application is instrumented using OpenTelemetry.
-
-Current telemetry includes:
-
-- Distributed traces
-- Application spans
-- HTTP request traces
-- Outbound HTTP client traces
-- Structured logs
-- HTTP request metrics
-- Request duration histograms
-- Active request metrics
-
-Telemetry can be exported using OTLP to an OpenTelemetry-compatible observability backend such as New Relic.
-
----
-
-## Technology Stack
-
-| Area | Technology |
-|---|---|
-| Language | Python 3.13+ |
-| API Framework | FastAPI |
-| Validation | Pydantic |
-| Configuration | Pydantic Settings |
-| HTTP Client | Requests |
-| Observability | OpenTelemetry |
-| Telemetry Protocol | OTLP / HTTP Protobuf |
-| APM / Observability Backend | New Relic |
-| Job Source | Greenhouse Job Board API |
-| Enrichment | LLM API |
-
----
-
-## Project Structure
-
-```text
-job_ingestion_platform_backend/
-│
-├── app/
-│   ├── api/
-│   │   └── v1/
-│   │       └── job_board/
-│   │
-│   ├── core/
-│   │   ├── context.py
-│   │   ├── logging.py
-│   │   └── settings.py
-│   │
-│   ├── infrastructure/
-│   │   └── observability/
-│   │       └── tracing.py
-│   │
-│   ├── middleware/
-│   │   └── request_context.py
-│   │
-│   ├── service/
-│   │   ├── job_board/
-│   │   │   ├── greenhouse.py
-│   │   │   └── schema.py
-│   │   │
-│   │   └── llm_integration/
-│   │       └── llm_service.py
-│   │
-│   ├── utils/
-│   │   └── job_fields.py
-│   │
-│   └── main.py
-│
-├── newrelic.ini
-├── pyproject.toml
-└── README.md
-```
-
-The structure may evolve as additional job sources and persistence mechanisms are introduced.
-
----
-
-## Architecture
-
-The application currently follows a layered structure.
-
-```text
-                 ┌─────────────────────┐
-                 │      FastAPI        │
-                 │      REST API       │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │     Middleware      │
-                 │ Request Context     │
-                 │ Observability       │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │ Job Board Services  │
-                 └──────────┬──────────┘
-                            │
-                ┌───────────┴───────────┐
-                ▼                       ▼
-       ┌─────────────────┐     ┌─────────────────┐
-       │ Greenhouse API  │     │   LLM Service   │
-       └─────────────────┘     └─────────────────┘
-```
-
-### Processing Strategy
-
-The ingestion pipeline intentionally performs inexpensive deterministic operations before LLM enrichment.
-
-```text
-Job
- │
- ▼
-Normalize
- │
- ▼
-Software role?
- │
- ├── No ──► Reject
- │
- ▼
-Seniority check
- │
- ├── Too senior ──► Reject
- │
- ▼
-Extract known fields
- │
- ▼
-LLM enrichment
- │
- ▼
-Soft filter
- │
- ▼
-Return candidate
-```
-
-This reduces unnecessary LLM requests and keeps the processing pipeline easier to reason about.
-
----
-
-## Getting Started
-
-### Prerequisites
-
-Ensure you have:
-
-- Python 3.13 or newer
-- `pip`
-- A Python virtual environment
-- Required external API credentials
-
-Check your Python version:
+Run these commands from the repository root:
 
 ```bash
 python3 --version
-```
-
----
-
-## Installation
-
-Clone the repository:
-
-```bash
-git clone <repository-url>
-cd job_ingestion_platform_backend
-```
-
-Create a virtual environment:
-
-```bash
 python3 -m venv .venv
-```
-
-Activate it:
-
-### macOS / Linux
-
-```bash
 source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
 ```
 
-### Windows
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` instead.
+
+If you do not already have a `.env` file, copy the example:
 
 ```bash
-.venv\Scripts\activate
+cp .env.example .env
 ```
 
-Install the project:
+On Windows PowerShell, use `Copy-Item .env.example .env`. Preserve an existing `.env` rather than overwriting its credentials.
+
+Edit `.env` with these values, replacing the credential placeholders:
+
+```dotenv
+APP_NAME="Job Data Ingestion Platform Backend"
+ENVIRONMENT="development"
+GREENHOUSE_URL="https://boards-api.greenhouse.io/v1/boards"
+OPENROUTER_API_KEY="your-openrouter-api-key"
+NEW_RELIC_LICENSE_KEY="your-new-relic-ingest-license-key"
+OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
+```
+
+The example file contains additional fields; their actual usage is documented below. Keep credentials out of source control.
+
+### Run
 
 ```bash
-pip install -e .
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
----
+Run from the repository root: `.env` loading and fixture search use paths relative to the working directory. `--reload` is for development.
+
+- API: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- Swagger UI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- ReDoc: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+- OpenAPI schema: [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json)
+
+Verify the server in a second terminal:
+
+```bash
+curl -i http://127.0.0.1:8000/health
+```
+
+Expected body:
+
+```json
+{"status": "Healthy"}
+```
+
+This is a process health check; it does not verify Greenhouse, OpenRouter, or New Relic connectivity.
 
 ## Configuration
 
-Application configuration is managed using `pydantic-settings`.
+Settings are defined in [`app/core/settings.py`](app/core/settings.py), using Pydantic Settings. The application reads UTF-8 `.env` values at import time; environment variables override `.env`. Names are case-insensitive by default, so the lowercase names in `.env.example` also work. Restart the process after changing configuration.
 
-Create a `.env` file in the project root.
+All string settings default to an empty string except `app_name`, which defaults to `Job Data Ingestion Platform Backend`. Empty credentials do not disable integrations.
 
-Example:
+| Variable | Current use |
+| --- | --- |
+| `APP_NAME` | Service name in JSON logs and OpenTelemetry resources. Does not set the FastAPI documentation title. |
+| `ENVIRONMENT` | Environment label in logs and telemetry. |
+| `GREENHOUSE_URL` | Greenhouse board API base URL. Set to `https://boards-api.greenhouse.io/v1/boards` without a trailing slash. |
+| `OPENROUTER_API_KEY` | Bearer token used for LLM requests. |
+| `NEW_RELIC_LICENSE_KEY` | `api-key` header for trace, log, and metric export. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Passed as a `protocol` header on log exports. The implementation uses OTLP HTTP exporters regardless of this value. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Declared in settings, but not used to select the application's export endpoints; those are hardcoded. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Declared in settings, but not used to construct the explicit exporter headers. |
+| `NEW_RELIC_LOG_URL` | Used by the separate `NewRelicLogClient`, which is not wired into application logging. |
+| `NEW_RELIC_USER_KEY` | Declared but unused by the active application flow. |
+| `LLM_API_URL`, `NVIDIA_API_KEY`, `HF_TOKEN`, `HF_URL`, `OPENAI_API_KEY` | Declared but unused by the active LLM integration. Setting them does not change its provider. |
 
-```env
-APP_NAME="Job Data Ingestion Platform Backend"
-ENVIRONMENT="development"
+The LLM endpoint and model are hardcoded in [`llm_service.py`](app/service/llm_integration/llm_service.py):
 
-GREENHOUSE_URL="https://boards-api.greenhouse.io/v1/boards"
-
-LLM_API_URL="<your-llm-endpoint>"
-NVIDIA_API_KEY="<your-api-key>"
-
-OTEL_SERVICE_NAME="Job Data Ingestion Platform Backend"
-OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.nr-data.net"
-OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
-OTEL_EXPORTER_OTLP_HEADERS="api-key=<your-license-key>"
+```text
+Endpoint: https://openrouter.ai/api/v1/chat/completions
+Model:    inclusionai/ling-3.0-flash-sante:free
 ```
 
-The exact variables required depend on the current `Settings` model.
+These are the repository's configured values, not a guarantee of provider availability. Changing the provider, model, or telemetry destination currently requires code changes.
 
-> Never commit `.env`, API keys, license keys, or other credentials to source control.
+## API reference
 
----
+All routes use `GET`. Job-board routes share the prefix `/api/v1/job-board`. No authentication is implemented.
 
-## Running the Application
+| Route | Behavior | Response |
+| --- | --- | --- |
+| `/health` | Process health check. | `{"status":"Healthy"}` |
+| `/api/v1/job-board/companies` | Return the configured board names without fetching jobs. | `{"total": N, "names": [...]}` |
+| `/api/v1/job-board/companies/{company_name}` | Fetch, classify, enrich, and filter one Greenhouse board. | `{"total": N, "jobs": [...]}` or JSON `null` |
+| `/api/v1/job-board/` | Process all configured boards sequentially and return retained jobs. | `{"total": N, "jobs": [...]}` |
+| `/api/v1/job-board/ingest` | Placeholder; does not start ingestion. | `{"status":"Pending"}` |
+| `/api/v1/job-board/jobs/search?visa_sponsorship=true` | Filter the bundled fixture by sponsorship. | A bare JSON array of matching fixture records. |
 
-Start the development server:
+### List companies
 
 ```bash
-uvicorn app.main:app --reload
+curl http://127.0.0.1:8000/api/v1/job-board/companies
 ```
 
-The API will be available at:
+The list comes from `greenhouse_boards` in [`greenhouse.py`](app/service/job_board/greenhouse.py). The returned total counts configured entries, including case variants and duplicates; it does not count unique companies or verify board availability.
 
-```text
-http://127.0.0.1:8000
+### Fetch jobs for a company
+
+```bash
+curl http://127.0.0.1:8000/api/v1/job-board/companies/remote
 ```
 
-FastAPI interactive documentation is available at:
+`company_name` is a Greenhouse board token and is interpolated into the upstream URL. It is not restricted to the configured list.
 
-```text
-http://127.0.0.1:8000/docs
-```
-
-Alternative API documentation is available at:
-
-```text
-http://127.0.0.1:8000/redoc
-```
-
----
-
-## API
-
-The primary API is exposed under:
-
-```text
-/api/v1
-```
-
-Current job-board functionality includes operations for retrieving configured companies and querying job postings for a company.
-
-For the complete and current API contract, use the generated OpenAPI documentation:
-
-```text
-/docs
-```
-
----
-
-## Health Check
-
-The service exposes a health endpoint:
-
-```http
-GET /health
-```
-
-Example response:
+A successful response with no retained candidates is:
 
 ```json
-{
-  "status": "Healthy"
-}
+{"total": 0, "jobs": []}
 ```
 
-The health endpoint currently verifies that the API process can serve requests. It does not currently represent a full dependency-readiness check.
+An upstream `404`, or an upstream response without `meta`, produces HTTP `200` with body `null`. Other upstream request errors and unhandled validation errors can produce HTTP `500`; there is no custom error mapping or standardized error envelope.
 
----
+### Fetch all configured boards
+
+```bash
+curl http://127.0.0.1:8000/api/v1/job-board/
+```
+
+This can take substantial time: board requests and per-job LLM calls run sequentially. The aggregate path also enriches retained jobs a second time after each company has already enriched them. There is no pagination, caching, or streaming, and an unhandled error can terminate the whole request.
+
+### Search the bundled fixture
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/job-board/jobs/search?visa_sponsorship=true'
+curl 'http://127.0.0.1:8000/api/v1/job-board/jobs/search?visa_sponsorship=false'
+```
+
+`visa_sponsorship` is a required Boolean query parameter. Missing or invalid values return FastAPI's HTTP `422` validation response. Jobs whose sponsorship is `null` match neither `true` nor `false`.
+
+Search reads [`app/examples/greenhouse_jobs.json`](app/examples/greenhouse_jobs.json) on each request. It does not search live ingestion results. Fixture records are returned unchanged, so their fields can differ from the normalized live response.
+
+### Correlate requests
+
+```bash
+curl -i -H 'X-Request-ID: local-check-001' http://127.0.0.1:8000/health
+```
+
+The middleware uses the supplied request ID, or generates a UUID, and returns it in `X-Request-ID` on responses that complete through the middleware. Request logs include the same identifier.
+
+## Processing pipeline
+
+The live company service follows this sequence:
+
+```text
+Greenhouse GET /{board}/jobs?content=true
+  -> Validate each job as NormalizedJob
+  -> Set source and company; detect sponsorship and experience with text rules
+  -> Filter software-role titles and excluded seniority terms
+  -> Extract additional fields through OpenRouter
+  -> Apply experience and seniority filters
+  -> Return retained jobs
+```
+
+1. **Fetch:** Greenhouse requests use a 30-second timeout. A missing board returns `None`.
+2. **Validate:** Raw records are passed directly to `NormalizedJob.model_validate`. There is no complete upstream-to-internal field mapper yet.
+3. **Extract:** Text rules detect selected positive/negative sponsorship phrases and numeric experience requirements. Unknown values remain `None`.
+4. **Classify:** Software-role keyword matches are required. Titles containing `senior`, `staff`, `principal`, `lead`, `director`, `manager`, `head`, or `vp` are excluded.
+5. **Enrich:** The LLM receives the title, company, location, and posting content. Parsed JSON is validated with `JobAIExtraction`, and non-`None` fields overwrite the corresponding job fields.
+6. **Filter:** Jobs with a minimum experience requirement of **6 or more years**, or an extracted experience level of `staff`, `principal`, or `director`, are removed. Unknown experience is retained.
+
+LLM calls use a 10-second connection timeout and a 120-second read timeout. Handled HTTP, JSON, and validation errors are logged and leave the job at its pre-enrichment state. There is no retry or backoff policy and no configuration switch to skip LLM calls.
+
+The `fit_role` dictionary is not applied as a matching policy. Live results are not restricted to visa sponsorship, relocation support, a particular language, or the two-year experience target recorded there.
+
+## Data models
+
+[`schema.py`](app/service/job_board/schema.py) defines the internal Pydantic models:
+
+| Model | Purpose |
+| --- | --- |
+| `NormalizedJob` | Job identity, company, title, description/content, seniority, experience, skills, location, immigration, compensation, application links, lifecycle, and extraction metadata. `company_name` and `title` are required. |
+| `JobLocation` | Raw location, city, state, country, country code, and remote type. |
+| `Salary` | Minimum/maximum amount, currency, and salary period. |
+| `JobAIExtraction` | LLM-extracted deadline, sponsorship details, relocation flag, experience, skills, technologies, and required languages. |
+
+Enums describe remote type, employment type, source, salary period, and experience levels. `NormalizedJob.experience_level` currently accepts a string rather than the experience enum. Source enum entries beyond Greenhouse do not represent implemented integrations.
+
+Many fields are optional and may be unpopulated. Sponsorship and relocation use `true`, `false`, or `null`; `null` means unknown. The API routes do not declare response models, so generated OpenAPI documentation does not fully describe these response schemas.
 
 ## Observability
 
-The application uses OpenTelemetry rather than coupling application instrumentation directly to a single observability vendor.
+Application startup configures JSON console logs and OTLP HTTP export for traces, logs, and metrics. FastAPI and outbound `requests` calls are instrumented.
+
+- **Traces:** Custom spans include `greenhouse.fetch_jobs` and `enrich_and_filter_jobs`, with attributes such as `job.company`, `jobs.fetched_count`, `jobs.input_count`, and `jobs.output_count`.
+- **Logs:** Console records include timestamp, level, logger, message, service, environment, and request ID when available. Middleware logs request start, completion, status, duration, and failures.
+- **Metrics:** A periodic reader exports every **5 seconds**. HTTP instrumentation supplies metrics; the repository does not define custom `app.http.*` instruments.
+
+Export destinations are hardcoded in [`tracing.py`](app/infrastructure/observability/tracing.py):
 
 ```text
-Application
-     │
-     ├── Logs
-     ├── Metrics
-     └── Traces
-          │
-          ▼
-    OpenTelemetry
-          │
-          ▼
-        OTLP
-          │
-          ▼
-      New Relic
+https://otlp.nr-data.net/v1/traces
+https://otlp.nr-data.net/v1/logs
+https://otlp.nr-data.net/v1/metrics
 ```
 
-### Tracing
+There is no telemetry-disable setting. Blank or invalid New Relic credentials can cause background export errors while the API still serves requests.
 
-FastAPI and outbound `requests` calls are instrumented.
+`newrelic.ini` is not loaded by `app.main`, and the New Relic Python agent is not a declared dependency. `app/otel/collector-config.yaml` is not used by the normal startup command; its receiver addresses need revision to local listening addresses before using it as a local collector configuration. A collector is not required by the current direct-export setup.
 
-A typical trace can contain:
+## Project structure
 
 ```text
-GET /api/v1/job-board/companies/{company}
-│
-├── Greenhouse HTTP request
-│
-└── enrich_and_filter_jobs
+app/
+├── main.py                         # FastAPI app and telemetry initialization
+├── api/v1/job_board/job_board.py    # HTTP routes
+├── core/
+│   ├── settings.py                 # Environment and .env configuration
+│   ├── logging.py                  # JSON console formatter
+│   └── context.py                  # Request ID context variable
+├── middleware/request_context.py   # Request IDs and request lifecycle logs
+├── service/
+│   ├── job_board/
+│   │   ├── greenhouse.py           # Board list, fetching, enrichment, filtering
+│   │   └── schema.py               # Internal models and enums
+│   └── llm_integration/llm_service.py
+├── utils/job_fields.py             # Role and description text rules
+├── infrastructure/observability/
+│   ├── tracing.py                  # Active OTLP exporters
+│   └── new_relic.py                # Separate, unwired log client
+├── examples/greenhouse_jobs.json    # Data source for fixture search
+├── prompts/extract_job_fields.txt   # Reference prompt; not loaded by LLMService
+└── otel/collector-config.yaml       # Collector configuration; not used at startup
+tests/                              # Currently only an __init__.py
+.env.example                        # Configuration template
+newrelic.ini                        # Separate agent configuration
+pyproject.toml                      # Dependencies and development tool settings
+readme.md                           # Project documentation
 ```
 
-Custom spans can contain application-specific attributes such as:
+## Development
 
-```text
-jobs.input_count
-jobs.output_count
-company
-```
-
-This makes it possible to identify where time is spent inside an ingestion request.
-
-### Metrics
-
-Application metrics include concepts such as:
-
-```text
-app.http.requests
-app.http.request.duration
-app.http.active_requests
-```
-
-These represent counters, histograms, and up/down counters used to understand request traffic, latency, and concurrency.
-
-### Structured Logging
-
-Application logs contain structured contextual fields such as:
-
-```json
-{
-  "level": "INFO",
-  "message": "Greenhouse jobs fetched",
-  "service": "Job Data Ingestion Platform Backend",
-  "environment": "development",
-  "request_id": "...",
-  "event": "greenhouse_jobs_fetched",
-  "company": "cloudbeds",
-  "total": 49
-}
-```
-
-Request IDs are propagated through the request context so logs produced during the same request can be correlated.
-
----
-
-## Code Quality
-
-The project uses Ruff for Python linting and formatting.
-
-Run the linter:
+Install the development dependency group with the upgraded `pip` from the quick start:
 
 ```bash
-ruff check .
+python -m pip install --group dev
 ```
 
-Automatically fix supported issues:
+This installs pytest, pytest-asyncio, HTTPX, Ruff, and mypy. If your pip version does not support `--group`, upgrade pip first.
+
+Run checks from the repository root with the virtual environment active:
 
 ```bash
-ruff check . --fix
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy app
+python -m pytest
 ```
 
-Format the codebase:
+Ruff targets Python 3.13 with an 88-character line length. Mypy is configured in strict mode. These commands describe the configured workflow, not a claim that the current code passes every check. The test directory currently contains no test cases; pytest reports no tests collected and exits with code `5`.
+
+To format Python files intentionally:
 
 ```bash
-ruff format .
+python -m ruff format .
 ```
 
-The project targets modern Python syntax and can use features such as `StrEnum` where appropriate.
+Common extension points:
 
----
+- Add or correct Greenhouse board tokens in `greenhouse_boards`.
+- Update active role keywords in `app/utils/job_fields.py` and seniority exclusions in the Greenhouse service.
+- Change extraction fields in `JobAIExtraction` together with the inline prompt in `LLMService.extract_fields`. The separate prompt text file is not loaded.
+- Add an explicit source mapping layer before validating raw jobs when extending normalization or introducing another board provider.
+- Mock Greenhouse and OpenRouter requests in future tests to avoid depending on external services or paid calls.
 
-## Development Principles
+## Troubleshooting
 
-The project currently follows several engineering principles:
+| Symptom | What to check |
+| --- | --- |
+| `ModuleNotFoundError` or `uvicorn` unavailable | Activate the virtual environment, install dependencies, and run from the repository root. |
+| Settings validation error for an extra `.env` key | Compare `.env` with `Settings`. Unrecognized dotenv keys are rejected by the default settings behavior. |
+| Invalid Greenhouse URL / missing scheme | Set `GREENHOUSE_URL`; its application default is empty. |
+| Company request returns `null` | The upstream board returned `404`, or its response did not contain `meta`. Check the board token. |
+| Live request fails with a model validation error | Raw jobs are validated before `company_name` is assigned. Payloads without that required field fail; see limitations below. |
+| OpenRouter authentication or model errors | Check `OPENROUTER_API_KEY` and the hardcoded model. Setting `LLM_API_URL` or another provider's key has no effect. |
+| New Relic exporter errors | Check `NEW_RELIC_LICENSE_KEY` and outbound connectivity. Empty credentials do not disable export. |
+| Fixture search raises `FileNotFoundError` | Start the app from the repository root and confirm `app/examples/greenhouse_jobs.json` exists. |
+| Search results do not reflect a live fetch | Search uses the checked-in fixture; live results are not saved to it. |
+| All-board request is slow | Processing is sequential and includes repeated enrichment. Use a single-company request while investigating. |
 
-**Normalize external data at system boundaries.** External APIs should be converted into internal models before application logic depends on them.
+## Current limitations
 
-**Filter early.** Cheap deterministic checks should eliminate irrelevant jobs before expensive operations such as LLM calls.
+- **Incomplete source mapping:** Greenhouse records are validated before the service assigns `company_name`. Records lacking it fail validation. Fields such as `id`, `absolute_url`, `language`, and `location.name` are not mapped to `source_job_id`, application/source URLs, `posting_language`, and `location.raw`, respectively.
+- **Role matching inconsistency:** Titles are lowercased, but some role keywords contain uppercase letters. Those keywords will not match as intended.
+- **Repeated work:** The board list includes case variants/duplicates, results are not deduplicated, and the aggregate endpoint enriches retained jobs twice.
+- **No ingestion job:** `/ingest` only returns `Pending`. The separate `ingest_all_companies()` helper returns inside its first loop iteration and is not connected to that route.
+- **Limited error recovery:** There are no retries, per-board recovery for general failures, or structured API error responses. LLM fallback covers selected error classes rather than every possible malformed response.
+- **No persistent workflow:** There is no database, cache, pagination, queue, scheduled ingestion, or background worker. Search and live ingestion use separate data paths.
+- **No deployment package:** Authentication, authorization, Docker packaging, CI/CD, deployment configuration, and an automated test suite are not included.
 
-**Keep vendor-specific infrastructure at the edges.** Application code emits OpenTelemetry telemetry rather than depending directly on New Relic throughout the business logic.
-
-**Prefer structured telemetry.** Important information such as company, request ID, status code, job counts, and duration should be represented as attributes instead of being embedded only inside log messages.
-
-**Instrument meaningful operations.** Custom spans should represent important units of work rather than tracing every function.
-
----
-
-## Current Limitations
-
-The project is under active development.
-
-The following capabilities are **not currently implemented**:
-
-- Persistent database storage
-- Background job processing
-- Authentication and authorization
-- Docker/container packaging
-- CI/CD pipeline
-- Production deployment configuration
-- Comprehensive automated test suite
-- Caching
-- Queue-based ingestion
-- Scheduled ingestion
-
-These should be documented as implemented features only after they are added to the system.
-
----
-
-## Roadmap
-
-Potential next stages include:
-
-```text
-Current
-   │
-   ├── Greenhouse ingestion
-   ├── Normalization
-   ├── Filtering
-   ├── LLM enrichment
-   └── Observability
-          │
-          ▼
-Next
-   ├── Persistence
-   ├── Background ingestion
-   ├── Additional job sources
-   ├── Automated testing
-   ├── Caching
-   ├── Scheduling
-   ├── CI/CD
-   ├── Containerization
-   └── Production deployment
-```
-
----
-
-## Status
-
-**Development**
-
-The platform currently provides the core job ingestion and enrichment pipeline and is being developed toward a production-ready job intelligence backend.
+These are implementation gaps, not configurable features. The repository provides a starting point for an ingestion service rather than a production-ready deployment.
